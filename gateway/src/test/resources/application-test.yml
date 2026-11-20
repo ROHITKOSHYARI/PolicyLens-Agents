@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:policylens-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: false
+security:
+  jwt:
+    secret: test-secret-that-is-longer-than-thirty-two-bytes
+    expiration-seconds: 3600

@@ -1,0 +1,7 @@
+services:
+  agent-service:
+    ports:
+      - "${AGENT_SERVICE_PORT:-8000}:8000"
+  jaeger:
+    ports:
+      - "16686:16686"
