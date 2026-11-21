@@ -22,7 +22,8 @@ class BaselineRAG:
         self.retrieval, self.llm = retrieval, llm
         self.top_k, self.max_question_chars, self.weak_score = top_k, max_question_chars, weak_score
 
-    def answer(self, tenant_id: str, question: str, *, bypass_cache: bool = False) -> dict[str, Any]:
+    def answer(self, tenant_id: str, question: str, *, bypass_cache: bool = False,
+               history: list[dict[str, str]] | None = None) -> dict[str, Any]:
         if len(question) > self.max_question_chars:
             raise ValueError(f"Question exceeds {self.max_question_chars} characters")
         started = time.monotonic()
@@ -33,6 +34,11 @@ class BaselineRAG:
         chunks = [m.chunk for m in matches]
         prompt = "\n\n".join(
             f'<document_chunk id="{c.chunk_id}" document_name="{c.filename}">\n{c.text}\n</document_chunk>' for c in chunks)
+        if history:
+            prior = "\n".join(
+                f'<history_message role="{message["role"]}">{message["content"]}</history_message>'
+                for message in history)
+            prompt += f"\n\n<prior_conversation>\n{prior}\n</prior_conversation>"
         prompt += f"\n\nQuestion: {question}\nAnswer with citations using exact chunk ids."
         result = self.llm.generate(SYSTEM_PROMPT, prompt, temperature=0.0, bypass_cache=bypass_cache)
         allowed = {c.chunk_id: c for c in chunks}

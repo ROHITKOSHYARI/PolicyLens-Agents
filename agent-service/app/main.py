@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from fastapi.responses import JSONResponse
 
 from app.retrieval.chunk_store import SQLiteChunkStore
@@ -42,6 +42,20 @@ class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=int(os.environ.get("MAX_QUESTION_CHARS", "4000")))
     top_k: int | None = Field(default=None, ge=1, le=20)
     bypass_cache: bool = False
+    history: list[dict[str, str]] = Field(default_factory=list)
+
+    @field_validator("history")
+    @classmethod
+    def validate_history(cls, history):
+        if len(history) > int(os.environ.get("MAX_HISTORY_MESSAGES", "12")):
+            raise ValueError("Too many history messages")
+        max_chars = int(os.environ.get("MAX_HISTORY_MESSAGE_CHARS", "4000"))
+        for message in history:
+            if set(message) != {"role", "content"} or message["role"] not in {"user", "assistant"}:
+                raise ValueError("History roles must be user or assistant")
+            if len(message["content"]) > max_chars:
+                raise ValueError("History message exceeds the configured character limit")
+        return history
 
 
 @app.post("/internal/chat")
@@ -59,7 +73,7 @@ async def chat(payload: ChatRequest, tenant_id: Annotated[str, Header(alias="X-T
                       max_question_chars=int(os.environ.get("MAX_QUESTION_CHARS", "4000")),
                       weak_score=float(os.environ.get("RAG_MIN_SCORE", "0")))
     try:
-        return rag.answer(tenant_id, payload.question, bypass_cache=payload.bypass_cache)
+        return rag.answer(tenant_id, payload.question, bypass_cache=payload.bypass_cache, history=payload.history)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
