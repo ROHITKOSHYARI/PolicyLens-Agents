@@ -18,8 +18,11 @@ from app.retrieval.embeddings import SentenceTransformerEmbedder
 from app.retrieval.parsers import DocumentParseError
 from app.retrieval.service import RetrievalService
 from app.retrieval.vector_store import ChromaVectorStore
+from app.llm.client import build_llm_client
+from app.rag import BaselineRAG
 
 _retrieval_service: RetrievalService | None = None
+_llm_client = None
 
 
 @asynccontextmanager
@@ -27,10 +30,38 @@ async def lifespan(_app: FastAPI):
     """Warm persistent indexes at container startup when enabled by deployment config."""
     if os.environ.get("RETRIEVAL_EAGER_INIT", "true").casefold() == "true":
         get_retrieval_service()
+    global _llm_client
+    _llm_client = build_llm_client()
     yield
 
 
 app = FastAPI(title="PolicyLens Agent Service", version="0.1.0", lifespan=lifespan)
+
+
+class ChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=int(os.environ.get("MAX_QUESTION_CHARS", "4000")))
+    top_k: int | None = Field(default=None, ge=1, le=20)
+    bypass_cache: bool = False
+
+
+@app.post("/internal/chat")
+async def chat(payload: ChatRequest, tenant_id: Annotated[str, Header(alias="X-Tenant-Id", min_length=1)]) -> dict[str, object]:
+    """Answer from retrieved evidence, scoped to the trusted gateway tenant header."""
+    try:
+        UUID(tenant_id)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail="Invalid tenant identifier") from error
+    global _llm_client
+    if _llm_client is None:
+        _llm_client = build_llm_client()
+    rag = BaselineRAG(get_retrieval_service(), _llm_client,
+                      top_k=payload.top_k or int(os.environ.get("RAG_TOP_K", "5")),
+                      max_question_chars=int(os.environ.get("MAX_QUESTION_CHARS", "4000")),
+                      weak_score=float(os.environ.get("RAG_MIN_SCORE", "0")))
+    try:
+        return rag.answer(tenant_id, payload.question, bypass_cache=payload.bypass_cache)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 def get_retrieval_service() -> RetrievalService:
