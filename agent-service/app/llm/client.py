@@ -120,6 +120,30 @@ class FakeLLM:
                          self.provider, 0, False)
 
 
+class ResilientLLMClient:
+    """Compose cache, rate limiting, retry, and provider call in that order."""
+    def __init__(self, provider: LLMClient, cache: DiskResponseCache, limiter: RateLimiter,
+                 max_attempts: int = 3, sleeper: Callable[[float], None] = time.sleep,
+                 jitter: Callable[[], float] = random.random):
+        self.provider, self.cache, self.limiter = provider, cache, limiter
+        self.provider_name, self.model = provider.provider, provider.model
+        self.max_attempts, self.sleeper, self.jitter = max_attempts, sleeper, jitter
+
+    def generate(self, system_prompt: str, user_prompt: str, *, temperature: float = 0.0,
+                 bypass_cache: bool = False) -> LLMResult:
+        key = self.cache.key(self.provider_name, self.model, temperature, system_prompt, user_prompt)
+        if not bypass_cache:
+            cached = self.cache.get(key)
+            if cached is not None:
+                return cached
+        def call() -> LLMResult:
+            self.limiter.acquire()
+            return self.provider.generate(system_prompt, user_prompt, temperature=temperature, bypass_cache=True)
+        result = with_retries(call, max_attempts=self.max_attempts, sleeper=self.sleeper, jitter=self.jitter)
+        self.cache.put(key, result)
+        return result
+
+
 def build_llm_client(environ: dict[str, str] | None = None) -> LLMClient:
     """Construct the configured provider; Gemini credentials are validated at startup."""
     env = os.environ if environ is None else environ
@@ -130,9 +154,15 @@ def build_llm_client(environ: dict[str, str] | None = None) -> LLMClient:
     if provider == "gemini":
         if not env.get("GEMINI_API_KEY", "").strip():
             raise RuntimeError("LLM_PROVIDER=gemini requires GEMINI_API_KEY")
-        from app.llm.providers import GeminiLLM
-        return GeminiLLM(env["GEMINI_API_KEY"], model)
-    if provider == "ollama":
-        from app.llm.providers import OllamaLLM
-        return OllamaLLM(env.get("OLLAMA_BASE_URL", "http://localhost:11434"), env.get("OLLAMA_MODEL", "llama3.1"))
-    raise RuntimeError(f"Unsupported LLM_PROVIDER: {provider}")
+        from app.llm.providers import GeminiClient
+        provider_client = GeminiClient(env["GEMINI_API_KEY"], model)
+    elif provider == "ollama":
+        from app.llm.providers import OllamaClient
+        provider_client = OllamaClient(env.get("OLLAMA_BASE_URL", "http://localhost:11434"), env.get("OLLAMA_MODEL", "llama3.1"))
+    elif provider == "fake":
+        provider_client = FakeLLM(env.get("LLM_MODEL", "fake-v1"))
+    else:
+        raise RuntimeError(f"Unsupported LLM_PROVIDER: {provider}")
+    cache = DiskResponseCache(env.get("LLM_CACHE_DIR", "/data/llm-cache"))
+    limiter = RateLimiter(int(env.get("LLM_REQUESTS_PER_MINUTE", "60")))
+    return ResilientLLMClient(provider_client, cache, limiter, int(env.get("LLM_MAX_ATTEMPTS", "3")))
