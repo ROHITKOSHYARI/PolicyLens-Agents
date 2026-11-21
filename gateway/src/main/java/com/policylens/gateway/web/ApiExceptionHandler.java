@@ -42,6 +42,11 @@ public class ApiExceptionHandler {
         return response(HttpStatus.valueOf(exception.getStatus()), exception.getMessage());
     }
 
+    @ExceptionHandler(Exception.class)
+    ResponseEntity<ErrorResponse> unexpectedFailure() {
+        return response(HttpStatus.INTERNAL_SERVER_ERROR, "Request could not be completed");
+    }
+
     private static ResponseEntity<ErrorResponse> response(HttpStatus status, String message) {
         return ResponseEntity.status(status).body(new ErrorResponse(status.value(), message, Instant.now()));
     }

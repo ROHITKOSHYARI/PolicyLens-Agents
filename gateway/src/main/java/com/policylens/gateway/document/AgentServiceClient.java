@@ -11,6 +11,7 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.UUID;
 import java.time.Duration;
@@ -68,6 +69,20 @@ public class AgentServiceClient {
                     .header("X-Tenant-Id", tenantId.toString())
                     .retrieve().toBodilessEntity();
         } catch (RestClientResponseException | ResourceAccessException exception) {
+            throw new AgentServiceException(502, "Agent service is unavailable");
+        }
+    }
+
+    public JsonNode chat(UUID tenantId, String question, java.util.List<java.util.Map<String,String>> history) {
+        try {
+            return client.post().uri("/internal/chat")
+                    .header("X-Service-Token", serviceToken).header("X-Tenant-Id", tenantId.toString())
+                    .body(java.util.Map.of("question", question, "history", history))
+                    .retrieve().body(JsonNode.class);
+        } catch (RestClientResponseException exception) {
+            throw new AgentServiceException(exception.getStatusCode().is4xxClientError() ? 422 : 502,
+                    exception.getStatusCode().is4xxClientError() ? "Agent service rejected the question" : "Agent service is unavailable");
+        } catch (ResourceAccessException exception) {
             throw new AgentServiceException(502, "Agent service is unavailable");
         }
     }
