@@ -7,6 +7,7 @@ from app.main import app
 
 def test_health_is_public(monkeypatch):
     monkeypatch.delenv("SERVICE_TOKEN", raising=False)
+    monkeypatch.setenv("RETRIEVAL_EAGER_INIT", "false")
     response = TestClient(app).get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
@@ -14,6 +15,7 @@ def test_health_is_public(monkeypatch):
 
 def test_internal_route_without_token_is_unauthorized(monkeypatch):
     monkeypatch.setenv("SERVICE_TOKEN", "test-service-token")
+    monkeypatch.setenv("RETRIEVAL_EAGER_INIT", "false")
     response = TestClient(app).get("/internal/ping")
     assert response.status_code == 401
     assert response.json()["status"] == 401
@@ -23,5 +25,6 @@ def test_internal_route_without_token_is_unauthorized(monkeypatch):
 
 def test_internal_route_with_token_is_authorized(monkeypatch):
     monkeypatch.setenv("SERVICE_TOKEN", "test-service-token")
+    monkeypatch.setenv("RETRIEVAL_EAGER_INIT", "false")
     response = TestClient(app).get("/internal/ping", headers={"X-Service-Token": "test-service-token"})
     assert response.status_code == 200

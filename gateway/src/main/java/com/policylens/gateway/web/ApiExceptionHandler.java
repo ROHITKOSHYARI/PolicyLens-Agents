@@ -5,6 +5,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import com.policylens.gateway.document.AgentServiceClient;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.server.ResponseStatusException;
@@ -30,6 +32,14 @@ public class ApiExceptionHandler {
     ResponseEntity<ErrorResponse> responseStatus(ResponseStatusException exception) {
         HttpStatus status = HttpStatus.valueOf(exception.getStatusCode().value());
         return response(status, exception.getReason() == null ? status.getReasonPhrase() : exception.getReason());
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity<ErrorResponse> uploadTooLarge() { return response(HttpStatus.PAYLOAD_TOO_LARGE, "File exceeds the configured upload limit"); }
+
+    @ExceptionHandler(AgentServiceClient.AgentServiceException.class)
+    ResponseEntity<ErrorResponse> agentFailure(AgentServiceClient.AgentServiceException exception) {
+        return response(HttpStatus.valueOf(exception.getStatus()), exception.getMessage());
     }
 
     private static ResponseEntity<ErrorResponse> response(HttpStatus status, String message) {

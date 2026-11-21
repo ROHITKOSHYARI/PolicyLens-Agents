@@ -4,15 +4,17 @@ spring:
   application:
     name: policylens-gateway
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:policylens;MODE=PostgreSQL;DB_CLOSE_DELAY=-1}
-    username: ${SPRING_DATASOURCE_USERNAME:sa}
-    password: ${SPRING_DATASOURCE_PASSWORD:}
+    url: ${POSTGRES_DB:jdbc:h2:mem:policylens;MODE=PostgreSQL;DB_CLOSE_DELAY=-1}
   jpa:
     hibernate:
       ddl-auto: validate
     open-in-view: false
   flyway:
     enabled: true
+  servlet:
+    multipart:
+      max-file-size: ${MAX_UPLOAD_SIZE:10MB}
+      max-request-size: ${MAX_REQUEST_SIZE:11MB}
 management:
   endpoints:
     web:
@@ -22,3 +24,12 @@ security:
   jwt:
     secret: ${JWT_SECRET:}
     expiration-seconds: ${JWT_EXPIRATION_SECONDS:3600}
+app:
+  upload:
+    max-file-size-bytes: ${MAX_UPLOAD_SIZE_BYTES:10485760}
+    directory: ${UPLOAD_DIRECTORY:./data/uploads}
+  agent:
+    url: ${AGENT_SERVICE_URL:http://localhost:8000}
+    service-token: ${SERVICE_TOKEN:}
+    connect-timeout: ${AGENT_CONNECT_TIMEOUT:3s}
+    read-timeout: ${AGENT_READ_TIMEOUT:30s}

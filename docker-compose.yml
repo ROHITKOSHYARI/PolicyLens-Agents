@@ -5,11 +5,14 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-policylens}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-policylens}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-policylens-local-only}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       JWT_EXPIRATION_SECONDS: ${JWT_EXPIRATION_SECONDS:-3600}
       AGENT_SERVICE_URL: http://agent-service:8000
       SERVICE_TOKEN: ${SERVICE_TOKEN:?Set SERVICE_TOKEN in .env}
+      MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-10MB}
+      MAX_UPLOAD_SIZE_BYTES: ${MAX_UPLOAD_SIZE_BYTES:-10485760}
+      UPLOAD_DIRECTORY: /data/uploads
     ports:
       - "${GATEWAY_PORT:-8080}:8080"
     depends_on:
@@ -24,6 +27,8 @@ services:
       retries: 10
       start_period: 40s
     read_only: true
+    volumes:
+      - gateway_uploads:/data/uploads
     tmpfs:
       - /tmp
     security_opt:
@@ -32,8 +37,16 @@ services:
   agent-service:
     build:
       context: ./agent-service
+      args:
+        EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
     environment:
       SERVICE_TOKEN: ${SERVICE_TOKEN:?Set SERVICE_TOKEN in .env}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+      RETRIEVAL_EAGER_INIT: "true"
+      CHUNK_SIZE: ${CHUNK_SIZE:-1000}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-150}
+      RRF_K: ${RRF_K:-60}
+      MAX_UPLOAD_SIZE_BYTES: ${MAX_UPLOAD_SIZE_BYTES:-10485760}
     expose:
       - "8000"
     healthcheck:
@@ -42,6 +55,8 @@ services:
       timeout: 5s
       retries: 5
     read_only: true
+    volumes:
+      - agent_data:/data
     tmpfs:
       - /tmp
     security_opt:
@@ -52,7 +67,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-policylens}
       POSTGRES_USER: ${POSTGRES_USER:-policylens}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-policylens-local-only}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -81,3 +96,5 @@ services:
 
 volumes:
   postgres_data:
+  gateway_uploads:
+  agent_data:

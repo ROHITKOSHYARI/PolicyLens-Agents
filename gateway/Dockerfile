@@ -6,7 +6,7 @@ COPY src ./src
 RUN mvn -B -DskipTests package
 
 FROM eclipse-temurin:21-jre-alpine
-RUN addgroup -S app && adduser -S -G app app
+RUN addgroup -S app && adduser -S -G app app && mkdir -p /data/uploads && chown -R app:app /data
 WORKDIR /app
 COPY --from=build /workspace/target/gateway-0.1.0-SNAPSHOT.jar /app/gateway.jar
 USER app
